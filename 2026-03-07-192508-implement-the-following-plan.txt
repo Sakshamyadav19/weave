@@ -1,0 +1,795 @@
+
+▗ ▗   ▖ ▖  Claude Code v2.1.68
+           Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~/Development/test/weave
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Plan to implement                                                            │
+│                                                                              │
+│ Review Reciprocity — Butterfly/Diverging Bar Chart                           │
+│                                                                              │
+│ Context                                                                      │
+│                                                                              │
+│ The current chart is a left-aligned double-bar chart: name label on the      │
+│ left, given bar on top, received bar below, both extending rightward. This   │
+│ makes it hard to compare given vs received for an engineer at a glance.      │
+│                                                                              │
+│ The new design is a diverging (butterfly) bar chart: the engineer name sits  │
+│ in a fixed-width centre column, the "given" bar extends leftward, and the    │
+│ "received" bar extends rightward — both on the same scale. This makes        │
+│ imbalances immediately visible. Also reduces from top-10 to top-5 by (given  │
+│ + received) DESC.                                                            │
+│                                                                              │
+│ ---                                                                          │
+│ File to change                                                               │
+│                                                                              │
+│ src/components/ReviewReciprocity.jsx — only this file.                       │
+│                                                                              │
+│ ---                                                                          │
+│ Data changes                                                                 │
+│                                                                              │
+│ - Change .slice(0, 10) → .slice(0, 5)                                        │
+│ - Sort is already (b.given + b.received) - (a.given + a.received) ✓          │
+│ - Bot filtering already correct ✓                                            │
+│ - maxDomain = Math.max(maxGiven, maxReceived) already unified scale ✓ — keep │
+│  this                                                                        │
+│                                                                              │
+│ ---                                                                          │
+│ SVG layout                                                                   │
+│                                                                              │
+│ |<---- barZone ---->|<-- NAME_W -->|<---- barZone ---->|                     │
+│                      fercgomes                                               │
+│ ████████████████████               ████████████                              │
+│          ███████████               ██████████████████                        │
+│                                                                              │
+│ Constants:                                                                   │
+│ const NAME_W = 100          // fixed centre column                           │
+│ const BAR_H = 16                                                             │
+│ const ROW_H = 30                                                             │
+│ const PADDING_TOP = 24      // room for column headers                       │
+│ const barZone = (containerWidth - NAME_W) / 2   // each side's max bar width │
+│ const xScale = (val) => (val / maxDomain) * barZone                          │
+│                                                                              │
+│ Per row:                                                                     │
+│ - Given bar:   x = barZone - xScale(d.given),  width = xScale(d.given)  →    │
+│ grows leftward from center                                                   │
+│ - Received bar: x = barZone + NAME_W,            width = xScale(d.received)  │
+│ → grows rightward from center                                                │
+│ - Name text:   x = barZone + NAME_W/2, textAnchor="middle" — centred in the  │
+│ name column                                                                  │
+│                                                                              │
+│ Column headers (at y ≈ PADDING_TOP - 8):                                     │
+│ - "← given" right-aligned near x = barZone - 4                               │
+│ - "received →" left-aligned near x = barZone + NAME_W + 4                    │
+│                                                                              │
+│ ---                                                                          │
+│ Remove                                                                       │
+│                                                                              │
+│ - The existing balanceX / dashed "balance line" (replaced by the centred     │
+│ layout itself)                                                               │
+│ - chartW, LABEL_W, VALUE_W constants (no longer used)                        │
+│ - The total value label on the right (no longer fits the symmetric layout;   │
+│ tooltip still shows it)                                                      │
+│                                                                              │
+│ ---                                                                          │
+│ Keep                                                                         │
+│                                                                              │
+│ - All hover/tooltip logic — unchanged, just update x coordinates relative to │
+│  new layout                                                                  │
+│ - isTop5 amber label colour logic — unchanged                                │
+│ - useContainerWidth hook — unchanged                                         │
+│ - GIVEN_COLOR (#7C3AED) and RECEIVED_COLOR (#F5A623) — unchanged             │
+│ - Hover background rect — update width to containerWidth, unchanged          │
+│ otherwise                                                                    │
+│ - Loading skeleton — unchanged                                               │
+│                                                                              │
+│ ---                                                                          │
+│ SVG height                                                                   │
+│                                                                              │
+│ const svgHeight = data.length * ROW_H + PADDING_TOP + 4                      │
+│ (same formula, just 5 rows instead of 10)                                    │
+│                                                                              │
+│ ---                                                                          │
+│ Verification                                                                 │
+│                                                                              │
+│ 1. Chart renders 5 bars max (not 10)                                         │
+│ 2. Both bars for the same engineer use same pixel-per-unit scale — the       │
+│ engineer with the highest single value has a bar reaching to barZone         │
+│ 3. Name column stays fixed at centre regardless of bar lengths               │
+│ 4. "← given" and "received →" column headers visible                         │
+│ 5. Hover tooltip still shows given/received counts                           │
+│ 6. Bot accounts excluded (graphite-app, copilot-pull-... should not appear)  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Update(src/components/ReviewReciprocity.jsx)
+  ⎿  Added 7 lines, removed 12 lines
+      57        received: reviewsReceived[login] || 0,
+      58      }))
+      59      .sort((a, b) => (b.given + b.received) - (a.given + a.recei
+          ved))
+      60 -    .slice(0, 10)                                              
+      60 +    .slice(0, 5)                                               
+      61  
+      62    // Top 5 logins from scores (leaderboard)
+      63    const top5 = new Set((scores || []).slice(0, 5).map(s => s.lo
+          gin))
+     ...
+      66    const maxReceived = Math.max(...data.map(d => d.received), 1)
+      67    const maxDomain = Math.max(maxGiven, maxReceived)
+      68  
+      69 -  const LABEL_W = 110                                          
+      70 -  const VALUE_W = 36                                           
+      71 -  const ROW_H = 32                                             
+      72 -  const BAR_H = 14                                             
+      73 -  const GAP = 3                                                
+      74 -  const PADDING_TOP = 10                                       
+      69 +  const NAME_W = 100                                           
+      70 +  const ROW_H = 30                                             
+      71 +  const BAR_H = 16                                             
+      72 +  const PADDING_TOP = 24                                       
+      73  
+      76 -  const chartW = Math.max(containerWidth - LABEL_W - VALUE_W - 
+         -8, 40)                                                         
+      74 +  const barZone = containerWidth > 0 ? (containerWidth - NAME_W
+         +) / 2 : 0                                                      
+      75    const svgHeight = data.length * ROW_H + PADDING_TOP + 4
+      76  
+      79 -  const xScale = (val) => (val / maxDomain) * chartW           
+      77 +  const xScale = (val) => (val / maxDomain) * barZone          
+      78  
+      81 -  // Balance line at midpoint of min(maxGiven, maxReceived)    
+      82 -  const balanceX = xScale(Math.min(maxGiven, maxReceived) / 2) 
+      83 -                                                               
+      79    return (
+      80      <div
+      81        style={{ gridArea: 'reciprocity' }}
+
+⏺ Update(src/components/ReviewReciprocity.jsx)
+  ⎿  Added 38 lines, removed 40 lines
+      116              height={svgHeight}
+      117              style={{ overflow: 'visible', flexShrink: 0 }}
+      118            >
+      119 -            {/* Balance line */}                              
+      120 -            {balanceX > 0 && (                                
+      121 -              <line                                           
+      122 -                x1={LABEL_W + balanceX}                       
+      123 -                y1={PADDING_TOP}                              
+      124 -                x2={LABEL_W + balanceX}                       
+      125 -                y2={svgHeight - 4}                            
+      126 -                stroke="#94a3b8"                              
+      127 -                strokeWidth={1}                               
+      128 -                strokeDasharray="3 3"                         
+      129 -              />                                              
+      130 -            )}                                                
+      119 +            {/* Column headers */}                            
+      120 +            <text                                             
+      121 +              x={barZone - 4}                                 
+      122 +              y={PADDING_TOP - 8}                             
+      123 +              textAnchor="end"                                
+      124 +              dominantBaseline="middle"                       
+      125 +              fontSize={10}                                   
+      126 +              fontWeight={700}                                
+      127 +              fill={GIVEN_COLOR}                              
+      128 +              style={{ fontFamily: 'inherit' }}               
+      129 +            >                                                 
+      130 +              ← given                                         
+      131 +            </text>                                           
+      132 +            <text                                             
+      133 +              x={barZone + NAME_W + 4}                        
+      134 +              y={PADDING_TOP - 8}                             
+      135 +              textAnchor="start"                              
+      136 +              dominantBaseline="middle"                       
+      137 +              fontSize={10}                                   
+      138 +              fontWeight={700}                                
+      139 +              fill={RECEIVED_COLOR}                           
+      140 +              style={{ fontFamily: 'inherit' }}               
+      141 +            >                                                 
+      142 +              received →                                      
+      143 +            </text>                                           
+      144  
+      145              {data.map((d, i) => {
+      146                const y = PADDING_TOP + i * ROW_H
+     ...
+      149                const isHovered = hoveredEngineer === d.login
+      150                const isTop5 = top5.has(d.login)
+      151                const labelColor = isTop5 ? RECEIVED_COLOR : '#1
+           11827'
+      139 -              const total = d.given + d.received              
+      152  
+      153                return (
+      154                  <g
+     ...
+      185                      />
+      186                    )}
+      187  
+      176 -                  {/* Login label */}                         
+      177 -                  <text                                       
+      178 -                    x={LABEL_W - 4}                           
+      179 -                    y={y + BAR_H + GAP / 2}                   
+      180 -                    textAnchor="end"                          
+      181 -                    dominantBaseline="middle"                 
+      182 -                    fontSize={12}                             
+      183 -                    fontWeight={isHovered ? 900 : isTop5 ? 700
+          - : 500}                                                       
+      184 -                    fill={labelColor}                         
+      185 -                    style={{ fontFamily: 'inherit' }}         
+      186 -                  >                                           
+      187 -                    {d.login.length > 14 ? d.login.slice(0, 13
+          -) + '…' : d.login}                                            
+      188 -                  </text>                                     
+      189 -                                                              
+      190 -                  {/* Given bar */}                           
+      188 +                  {/* Given bar — grows leftward from centre *
+          +/}                                                            
+      189                    <rect
+      192 -                    x={LABEL_W}                               
+      193 -                    y={y}                                     
+      190 +                    x={barZone - givenW}                      
+      191 +                    y={y + (ROW_H - BAR_H) / 2}               
+      192                      width={givenW}
+      193                      height={BAR_H}
+      194                      fill={GIVEN_COLOR}
+      195                      opacity={isHovered ? 1 : 0.85}
+      196                    />
+      197  
+      200 -                  {/* Received bar */}                        
+      198 +                  {/* Received bar — grows rightward from cent
+          +re */}                                                        
+      199                    <rect
+      202 -                    x={LABEL_W}                               
+      203 -                    y={y + BAR_H + GAP}                       
+      200 +                    x={barZone + NAME_W}                      
+      201 +                    y={y + (ROW_H - BAR_H) / 2}               
+      202                      width={receivedW}
+      203                      height={BAR_H}
+      204                      fill={RECEIVED_COLOR}
+      205                      opacity={isHovered ? 1 : 0.85}
+      206                    />
+      207  
+      210 -                  {/* Total label */}                         
+      208 +                  {/* Name label — centred in NAME_W column */
+          +}                                                             
+      209                    <text
+      212 -                    x={LABEL_W + chartW + 4}                  
+      213 -                    y={y + BAR_H + GAP / 2}                   
+      214 -                    textAnchor="start"                        
+      210 +                    x={barZone + NAME_W / 2}                  
+      211 +                    y={y + ROW_H / 2}                         
+      212 +                    textAnchor="middle"                       
+      213                      dominantBaseline="middle"
+      214                      fontSize={11}
+      217 -                    fontWeight={700}                          
+      218 -                    fill="#6b7280"                            
+      215 +                    fontWeight={isHovered ? 900 : isTop5 ? 700
+          + : 500}                                                       
+      216 +                    fill={labelColor}                         
+      217                      style={{ fontFamily: 'inherit' }}
+      218                    >
+      221 -                    {total}                                   
+      219 +                    {d.login.length > 12 ? d.login.slice(0, 11
+          +) + '…' : d.login}                                            
+      220                    </text>
+      221                  </g>
+      222                )
+
+⏺ Let me verify the final file looks correct:
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Done. Here's what changed:
+
+  Layout — diverging butterfly chart: given bar grows leftward from the centre
+  column, received bar grows rightward. Name is centred in a fixed 100px column
+  at the midpoint.
+
+  Removed: LABEL_W, VALUE_W, GAP, chartW, balanceX/dashed line, total value
+  label on the right.
+
+  Added: NAME_W, barZone, column headers "← given" (purple, right-aligned) and
+  "received →" (amber, left-aligned) above each side.
+
+  Data: .slice(0, 10) → .slice(0, 5).
+
+  Kept unchanged: tooltip logic, isTop5 amber label colour, useContainerWidth,
+  GIVEN_COLOR/RECEIVED_COLOR, hover background rect, loading skeleton, bot
+  filtering, unified maxDomain scale.
+
+✻ Baked for 44s
+
+❯ initialize git and push it to https://github.com/Sakshamyadav19/weave.git 
+
+⏺ Bash(git status)
+  ⎿  warning: could not open directory 'Pictures/Photo Booth Library/': Ope
+     ration not permitted
+     warning: could not open directory '.Trash/': Operation not permitted
+     … +426 lines (ctrl+o to expand)
+
+⏺ Bash(git remote -v && git log --oneline -3)
+  ⎿  origin     https://github.com/Sakshamyadav19/AIDog.git (fetch)
+     origin     https://github.com/Sakshamyadav19/AIDog.git (push)
+     552e054 initial comit
+     … +2 lines (ctrl+o to expand)
+
+⏺ The repo is already initialized. The remote currently points to AIDog.git —
+  I'll update it to weave.git, commit the current change, and push.
+
+⏺ Bash(git remote set-url origin https://github.com/Sakshamyadav19/weave.git)
+  ⎿  (No output)
+
+⏺ Bash(git add src/components/ReviewReciprocity.jsx && git status --short)
+  ⎿  warning: could not open directory 'Pictures/Photo Booth Library/': Ope
+     ration not permitted
+     warning: could not open directory '.Trash/': Operation not permitted
+     … +426 lines (ctrl+o to expand)
+
+⏺ Bash(git commit -m "$(cat <<'EOF'
+      Refactor ReviewReciprocity to diverging butterfly bar chart…)
+  ⎿  [main 39a0d25] Refactor ReviewReciprocity to diverging butterfly bar c
+     hart
+      Committer: Saksham Yadav <sakshamyadav@Sakshams-MacBook-Air-2.local>
+     … +14 lines (ctrl+o to expand)
+
+⏺ Bash(git push -u origin main 2>&1)
+  ⎿  To https://github.com/Sakshamyadav19/weave.git
+      * [new branch]      main -> main
+     branch 'main' set up to track 'origin/main'.
+
+⏺ Pushed successfully. The commit is now live at
+  https://github.com/Sakshamyadav19/weave.git on the main branch.
+
+  Note: the git root appears to be your home directory (~/), so the commit path
+  shows as Development/test/weave/src/components/ReviewReciprocity.jsx. The repo
+   also has a large number of unstaged deletions from a studyBuddy directory —
+  those weren't touched, only the ReviewReciprocity.jsx change was committed.
+
+✻ Worked for 33s
+
+❯ can you handle the styling for different screen sizes? specially for      
+  bigger screen such that it remains relative and fixed for larger screens  
+  everywhere                                                                
+  ⎿  Initializing…
+  ⎿  Invalid tool parameters
+
+⏺ Explore(Explore weave project layout and styling)
+  ⎿  Done (20 tool uses · 67.1k tokens · 48s)
+  (ctrl+o to expand)
+
+⏺ Let me read the key files before making changes.
+
+⏺ Read 6 files (ctrl+o to expand)
+
+⏺ Now I have a full picture. Here's what needs fixing for larger screens:
+
+  - Header: 6vh grows to 130px on 4K — needs a max cap
+  - LeaderboardPanel: w-8, w-28, w-14 fixed columns don't scale; text-xs stays
+  tiny
+  - TrustNetworkPanel: cellSize capped at 40px leaves dead space on large
+  screens
+  - ProfileCard: 40vw at 4K = 1536px wide — needs a max cap
+  - RedFlagsPanel: engineer name max-w-[90px] is too narrow on large screens
+  - App.jsx: grid height needs to account for header max-cap
+
+⏺ Update(src/components/Header.jsx)
+  ⎿  Added 9 lines, removed 9 lines
+       7  
+       8    return (
+       9      <header
+      10 -      className="border-b-4 border-black bg-neo-secondary flex 
+         -items-center justify-between px-6 flex-shrink-0"               
+      11 -      style={{ height: '6vh', minHeight: '52px' }}             
+      10 +      className="border-b-4 border-black bg-neo-secondary flex 
+         +items-center justify-between px-6 xl:px-10 2xl:px-14 flex-shrin
+         +k-0"                                                           
+      11 +      style={{ height: 'clamp(52px, 6vh, 72px)' }}             
+      12      >
+      13        {/* Left: Logo + Repo */}
+      14        <div className="flex items-center gap-3">
+      15 -        <div className="w-6 h-6 bg-black rounded-sm flex items-
+         -center justify-center">                                        
+      16 -          <span className="text-neo-secondary text-xs font-blac
+         -k">PH</span>                                                   
+      15 +        <div className="w-6 h-6 xl:w-8 xl:h-8 bg-black rounded-
+         +sm flex items-center justify-center flex-shrink-0">            
+      16 +          <span className="text-neo-secondary text-xs xl:text-s
+         +m font-black">PH</span>                                        
+      17          </div>
+      18 -        <span className="font-black text-sm uppercase tracking-
+         -wider">                                                        
+      18 +        <span className="font-black text-sm xl:text-base upperc
+         +ase tracking-wider">                                           
+      19            PostHog / posthog
+      20          </span>
+      21 -        <span className="border-2 border-black px-2 py-0.5 text
+         --xs font-black bg-white shadow-neo-sm">                        
+      21 +        <span className="border-2 border-black px-2 py-0.5 text
+         +-xs xl:text-sm font-black bg-white shadow-neo-sm">             
+      22            Engineering Impact
+      23          </span>
+      24        </div>
+      25  
+      26        {/* Center: Period Selector */}
+      27        <div className="flex items-center gap-1">
+      28 -        <span className="text-xs font-black mr-2 uppercase trac
+         -king-wider">Window:</span>                                     
+      28 +        <span className="text-xs xl:text-sm font-black mr-2 upp
+         +ercase tracking-wider">Window:</span>                          
+      29          {PERIODS.map(p => (
+      30            <button
+      31              key={p}
+      32              onClick={() => onPeriodChange(p)}
+      33              disabled={layer1Status === 'loading'}
+      34              className={`
+      35 -              px-3 py-1 text-xs font-black border-2 border-blac
+         -k transition-all duration-100                                  
+      35 +              px-3 xl:px-4 py-1 text-xs xl:text-sm font-black b
+         +order-2 border-black transition-all duration-100               
+      36                active:translate-x-[2px] active:translate-y-[2px]
+           active:shadow-none
+      37                disabled:opacity-50 disabled:cursor-not-allowed
+      38                ${period === p
+     ...
+      47        </div>
+      48  
+      49        {/* Right: Stats + Timestamp */}
+      50 -      <div className="flex items-center gap-4 text-xs font-bold
+         -">                                                             
+      50 +      <div className="flex items-center gap-4 text-xs xl:text-s
+         +m font-bold">                                                  
+      51          {activeCount > 0 && (
+      52            <span className="border-2 border-black px-2 py-0.5 bg
+          -white">
+      53              {activeCount} engineers active
+
+⏺ Update(src/App.jsx)
+  ⎿  Added 1 line, removed 1 line
+      500            style={{
+      501              display: 'grid',
+      502              gridTemplateColumns: '52fr 48fr',
+      503 -            height: 'calc(100vh - 6vh)',                      
+      503 +            height: 'calc(100vh - clamp(52px, 6vh, 72px))',   
+      504            }}
+      505          >
+      506            <div style={{ display: 'flex', flexDirection: 'colum
+           n', minHeight: 0 }}>
+
+⏺ Now scale the LeaderboardPanel fixed columns and fonts:
+
+⏺ Update(src/components/LeaderboardPanel.jsx)
+  ⎿  Added 7 lines, removed 7 lines
+      34    return (
+      35      <div
+      36        className={`
+      37 -        border-2 border-black mb-2 flex h-10 cursor-pointer tra
+         -nsition-all duration-200                                       
+      37 +        border-2 border-black mb-2 flex h-10 xl:h-12 cursor-poi
+         +nter transition-all duration-200                               
+      38          ${isHovered
+      39            ? 'shadow-neo-md -translate-y-0.5 bg-neo-secondary'
+      40            : 'shadow-neo-sm hover:-translate-y-0.5 hover:shadow-
+          neo-md bg-white'
+     ...
+      45        onMouseLeave={() => onHover(null)}
+      46      >
+      47        {/* Rank */}
+      48 -      <div className="w-8 border-r-2 border-black flex items-ce
+         -nter justify-center font-black text-xs flex-shrink-0">         
+      48 +      <div className="w-8 xl:w-10 2xl:w-12 border-r-2 border-bl
+         +ack flex items-center justify-center font-black text-xs xl:text
+         +-sm flex-shrink-0">                                            
+      49          {rank}
+      50        </div>
+      51  
+      52        {/* Avatar */}
+      53 -      <div className="w-8 border-r-2 border-black flex items-ce
+         -nter justify-center flex-shrink-0 overflow-hidden">            
+      53 +      <div className="w-8 xl:w-10 2xl:w-12 border-r-2 border-bl
+         +ack flex items-center justify-center flex-shrink-0 overflow-hid
+         +den">                                                          
+      54          <img
+      55 -          src={`${AVATARS_BASE}/${login}?size=32`}             
+      55 +          src={`${AVATARS_BASE}/${login}?size=48`}             
+      56            alt={login}
+      57            className="w-full h-full object-cover"
+      58            onError={e => { e.target.style.display = 'none' }}
+     ...
+      60        </div>
+      61  
+      62        {/* Name */}
+      63 -      <div className="w-28 border-r-2 border-black flex items-c
+         -enter px-2 flex-shrink-0 overflow-hidden">                     
+      64 -        <span className="font-bold text-xs truncate">{login}</s
+         -pan>                                                           
+      63 +      <div className="w-28 xl:w-36 2xl:w-44 border-r-2 border-b
+         +lack flex items-center px-2 flex-shrink-0 overflow-hidden">    
+      64 +        <span className="font-bold text-xs xl:text-sm truncate"
+         +>{login}</span>                                                
+      65        </div>
+      66  
+      67        {/* Bar */}
+      68        <div className="flex-1 flex items-center px-2 overflow-hi
+          dden">
+      69 -        <div className="w-full h-5 border border-black/20 bg-gr
+         -ay-50 flex overflow-hidden">                                   
+      69 +        <div className="w-full h-5 xl:h-6 border border-black/2
+         +0 bg-gray-50 flex overflow-hidden">                            
+      70            {/* Dark Matter segment */}
+      71            {hasLayer2 && dmW > 0 && (
+      72              <div
+
+⏺ Update(src/components/LeaderboardPanel.jsx)
+  ⎿  Added 1 line, removed 1 line
+      104        </div>
+      105  
+      106        {/* Score */}
+      107 -      <div className="w-14 border-l-2 border-black flex items-
+          -center justify-center font-black text-xs flex-shrink-0">      
+      107 +      <div className="w-14 xl:w-16 2xl:w-20 border-l-2 border-
+          +black flex items-center justify-center font-black text-xs xl:t
+          +ext-sm flex-shrink-0">                                        
+      108          {composite.toFixed(0)}
+      109        </div>
+      110      </div>
+
+⏺ Update(src/components/LeaderboardPanel.jsx)
+  ⎿  Added 3 lines, removed 3 lines
+      124  
+      125    return (
+      126      <div
+      127 -      className="p-4 overflow-hidden flex flex-col h-full"    
+      127 +      className="p-4 xl:p-5 2xl:p-6 overflow-hidden flex flex-
+          +col h-full"                                                   
+      128        style={{ gridArea: 'leaderboard' }}
+      129      >
+      130        {/* Header */}
+      131 -      <div className="flex items-center justify-between mb-3 f
+          -lex-shrink-0">                                                
+      132 -        <h2 className="font-black text-sm uppercase tracking-w
+          -idest flex items-center">                                     
+      131 +      <div className="flex items-center justify-between mb-3 x
+          +l:mb-4 flex-shrink-0">                                        
+      132 +        <h2 className="font-black text-sm xl:text-base upperca
+          +se tracking-widest flex items-center">                        
+      133            Impact Leaderboard
+      134            <InfoTooltip text="Composite score: Dark Matter (40%
+           ) + Gravitational Pull (35%) + Rework Efficiency (25%)" />
+      135          </h2>
+
+⏺ Now update TrustNetworkPanel to increase the cell size cap and scale label
+  dimensions:
+
+⏺ Update(src/components/TrustNetworkPanel.jsx)
+  ⎿  Added 5 lines, removed 4 lines
+      71    const reviewers = topEngineers
+      72    const authors = topEngineers
+      73  
+      74 -  // Layout — larger cells and labels for readability          
+      75 -  const ROW_LABEL_W = 100  // left label width                 
+      76 -  const COL_LABEL_H = 68   // top rotated label height         
+      74 +  // Layout — scale label dimensions with container width      
+      75 +  const ROW_LABEL_W = dims.width >= 1536 ? 130 : dims.width >= 
+         +1280 ? 115 : 100                                               
+      76 +  const COL_LABEL_H = dims.width >= 1536 ? 84 : dims.width >= 1
+         +280 ? 76 : 68                                                  
+      77    const PAD = 6
+      78  
+      79    const availW = Math.max(0, dims.width - ROW_LABEL_W - PAD)
+      80    const n = topEngineers.length
+      81 -  const cellSize = n > 0 ? Math.min(Math.floor(availW / n), 40)
+         - : 0                                                           
+      81 +  // Raise cell cap so large screens don't leave dead space (40
+         + → 56)                                                         
+      82 +  const cellSize = n > 0 ? Math.min(Math.floor(availW / n), 56)
+         + : 0                                                           
+      83  
+      84    // Color: cream → amber
+      85    function cellColor(weight) {
+
+⏺ Update(src/components/TrustNetworkPanel.jsx)
+  ⎿  Added 3 lines, removed 3 lines
+       99  
+      100    return (
+      101      <div
+      102 -      className="p-4 flex flex-col"                           
+      102 +      className="p-4 xl:p-5 2xl:p-6 flex flex-col"            
+      103        style={{ gridArea: 'network' }}
+      104      >
+      105 -      <div className="flex items-center justify-between mb-2 f
+          -lex-shrink-0">                                                
+      106 -        <h2 className="font-black text-sm uppercase tracking-w
+          -idest flex items-center">                                     
+      105 +      <div className="flex items-center justify-between mb-2 x
+          +l:mb-3 flex-shrink-0">                                        
+      106 +        <h2 className="font-black text-sm xl:text-base upperca
+          +se tracking-widest flex items-center">                        
+      107            Trust Network
+      108            <InfoTooltip text="Co-review matrix: rows = reviewer
+           , columns = PR author. Cell color = review frequency. Amber = 
+           top 5 engineers." />
+      109          </h2>
+
+⏺ Now cap ProfileCard width and scale its internals:
+
+⏺ Update(src/components/ProfileCard.jsx)
+  ⎿  Added 1 line
+      153          style={{
+      154            width: '40vw',
+      155            minWidth: '360px',
+      156 +          maxWidth: '640px',                                  
+      157            transform: isOpen ? 'translateX(0)' : 'translateX(10
+           0%)',
+      158            transition: isOpen ? 'transform 300ms ease-out' : 't
+           ransform 250ms ease-in',
+      159            boxShadow: '-8px 0 0 0 #000',
+
+⏺ Update(src/components/ProfileCard.jsx)
+  ⎿  Added 3 lines, removed 3 lines
+      160          }}
+      161        >
+      162          {engineer && (
+      163 -          <div className="p-6">                               
+      163 +          <div className="p-6 xl:p-8">                        
+      164              {/* Identity Strip */}
+      165              <div className="flex items-center gap-4 border-b-4
+            border-black pb-4 mb-5">
+      166                <img
+      167 -                src={`https://avatars.githubusercontent.com/${
+          -engineer}?size=64`}                                           
+      167 +                src={`https://avatars.githubusercontent.com/${
+          +engineer}?size=80`}                                           
+      168                  alt={engineer}
+      169 -                className="w-16 h-16 border-4 border-black sha
+          -dow-neo-sm flex-shrink-0"                                     
+      169 +                className="w-16 h-16 xl:w-20 xl:h-20 border-4 
+          +border-black shadow-neo-sm flex-shrink-0"                     
+      170                  onError={e => {
+      171                    e.target.src = `data:image/svg+xml,<svg xmln
+           s="http://www.w3.org/2000/svg" width="64" height="64" viewBox=
+           "0 0 64 64"><rect width="64" height="64" fill="%23FFD93D"/><te
+           xt x="32" y="40" text-anchor="middle" font-size="24" font-fami
+           ly="sans-serif" font-weight="bold">${engineer.charAt(0).toUppe
+           rCase()}</text></svg>`
+      172                  }}
+
+⏺ Update(src/components/ProfileCard.jsx)
+  ⎿  Added 1 line, removed 1 line
+      172                  }}
+      173                />
+      174                <div className="flex-1 min-w-0">
+      175 -                <h2 className="font-black text-xl truncate">{e
+          -ngineer}</h2>                                                 
+      175 +                <h2 className="font-black text-xl xl:text-2xl 
+          +truncate">{engineer}</h2>                                     
+      176                  {firstContribution && (
+      177                    <p className="text-xs font-bold text-gray-50
+           0 mt-0.5">
+      178                      Contributor since {new Date(firstContribut
+           ion).getFullYear()}
+
+⏺ Update(src/components/ProfileCard.jsx)
+  ⎿  Added 2 lines, removed 2 lines
+      51  function StatBlock({ label, value, subLabel, color }) {
+      52    return (
+      53      <div className="border-2 border-black p-3 shadow-neo-sm bg-
+          white">
+      54 -      <div className="text-xs font-black uppercase tracking-wid
+         -er text-gray-500 mb-1">{label}</div>                           
+      55 -      <div className="font-black text-2xl" style={{ color: colo
+         -r || '#000' }}>{value}</div>                                   
+      54 +      <div className="text-xs xl:text-sm font-black uppercase t
+         +racking-wider text-gray-500 mb-1">{label}</div>                
+      55 +      <div className="font-black text-2xl xl:text-3xl" style={{
+         + color: color || '#000' }}>{value}</div>                       
+      56        {subLabel && <div className="text-xs font-bold text-gray-
+          400 mt-0.5">{subLabel}</div>}
+      57      </div>
+      58    )
+
+⏺ Now fix RedFlagsPanel's cramped engineer name and scale padding:
+
+⏺ Update(src/components/RedFlagsPanel.jsx)
+  ⎿  Added 1 line, removed 1 line
+      17  
+      18    return (
+      19      <div
+      20 -      className="flex items-center gap-2 border-2 border-black 
+         -p-2 mb-2 shadow-neo-sm                                         
+      20 +      className="flex items-center gap-2 border-2 border-black 
+         +p-2 xl:p-3 mb-2 shadow-neo-sm                                  
+      21                   cursor-pointer hover:-translate-y-0.5 hover:sh
+          adow-neo-md transition-all duration-200 bg-white"
+      22        style={{
+      23          transform: visible ? 'translateX(0)' : 'translateX(100%
+          )',
+
+⏺ Update(src/components/RedFlagsPanel.jsx)
+  ⎿  Added 2 lines, removed 2 lines
+      30          className="w-2.5 h-2.5 rounded-full border border-black
+           flex-shrink-0"
+      31          style={{ backgroundColor: severityColor }}
+      32        />
+      33 -      <span className="font-bold text-xs truncate max-w-[90px]"
+         ->{flag.engineer}</span>                                        
+      34 -      <span className="text-xs text-gray-500 flex-1 truncate mi
+         -n-w-0">{flag.label}</span>                                     
+      33 +      <span className="font-bold text-xs xl:text-sm truncate ma
+         +x-w-[90px] xl:max-w-[130px] 2xl:max-w-[160px]">{flag.engineer}<
+         +/span>                                                         
+      34 +      <span className="text-xs xl:text-sm text-gray-500 flex-1 
+         +truncate min-w-0">{flag.label}</span>                          
+      35      </div>
+      36    )
+      37  }
+
+⏺ Update(src/components/RedFlagsPanel.jsx)
+  ⎿  Added 1 line, removed 1 line
+      69  
+      70    return (
+      71      <div
+      72 -      className="pt-px pb-px px-3 flex flex-col overflow-hidden
+         -"                                                              
+      72 +      className="pt-px pb-px px-3 xl:px-4 2xl:px-5 flex flex-co
+         +l overflow-hidden"                                             
+      73        style={{ gridArea: 'redflags' }}
+      74      >
+      75        <div className="flex-1 overflow-y-auto overflow-x-hidden 
+          pr-0.5" style={{ scrollbarWidth: 'thin' }}>
+
+⏺ Also scale the section headers in RedFlagsPanel:
+
+⏺ Update(src/components/RedFlagsPanel.jsx)
+  ⎿  Added 1 line, removed 1 line
+      40    if (count === 0) return null
+      41    return (
+      42      <div className="flex items-center justify-between mb-1.5 mt
+          -3 first:mt-0">
+      43 -      <span className="text-xs font-black uppercase tracking-wi
+         -der text-gray-500 flex items-center">                          
+      43 +      <span className="text-xs xl:text-sm font-black uppercase 
+         +tracking-wider text-gray-500 flex items-center">               
+      44          {title}
+      45          {tooltip && <InfoTooltip text={tooltip} />}
+      46        </span>
+
+⏺ Now commit and push:
+
+⏺ Bash(git add src/components/Header.jsx src/components/LeaderboardPanel.jsx
+      src/components/TrustNetworkPanel.jsx src/components/ProfileCard.jsx
+      src/components/RedFlag…)
+  ⎿  [main 75bfacf] Add responsive scaling for larger screens (xl/2xl break
+     points)
+      Committer: Saksham Yadav <sakshamyadav@Sakshams-MacBook-Air-2.local>
+     … +17 lines (ctrl+o to expand)
+
+⏺ Bash(git push 2>&1)
+  ⎿  To https://github.com/Sakshamyadav19/weave.git
+        39a0d25..75bfacf  main -> main
+
+⏺ Pushed. Here's a summary of every change made across the 6 files:
+
+  Header — clamp(52px, 6vh, 72px) caps height at 72px on 4K (was uncapped, would
+   reach ~130px); padding, font sizes, and logo scale at xl/2xl.
+
+  App — Grid height updated to calc(100vh - clamp(52px, 6vh, 72px)) to stay in
+  sync with the capped header.
+
+  LeaderboardPanel — All fixed-px columns grow at breakpoints:
+  - Rank: w-8 → xl:w-10 2xl:w-12
+  - Avatar: same, also requests a larger image
+  - Name: w-28 → xl:w-36 2xl:w-44, font text-xs → xl:text-sm
+  - Score: w-14 → xl:w-16 2xl:w-20
+  - Row height: h-10 → xl:h-12, bar height h-5 → xl:h-6
+  - Panel padding/header text scale at xl/2xl
+
+  TrustNetworkPanel — Cell size cap raised 40 → 56px so large screens fill the
+  grid instead of leaving dead space; ROW_LABEL_W and COL_LABEL_H now scale with
+   container width (100/130px and 68/84px tiers).
+
+  ProfileCard — maxWidth: 640px added (was 40vw with no cap, so 1536px wide on
+  4K); avatar, heading, and stat numbers scale at xl.
+
+  RedFlagsPanel — Engineer name max-w-[90px] → xl:max-w-[130px] 
+  2xl:max-w-[160px]; padding and font sizes scale at xl/2xl.
+
+✻ Churned for 5m 4s

@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Space Grotesk', sans-serif;
+    background-color: #FFFDF5;
+    overflow: hidden;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border: 1px solid #000;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #000;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #333;
+  }
+}
+
+@layer utilities {
+  /* Neo-brutalism focus ring */
+  .neo-focus:focus {
+    outline: 3px solid #000;
+    outline-offset: 2px;
+  }
+
+  /* Reduce motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
